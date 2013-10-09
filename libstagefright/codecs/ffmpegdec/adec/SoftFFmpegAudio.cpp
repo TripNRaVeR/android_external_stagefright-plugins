@@ -94,15 +94,8 @@ SoftFFmpegAudio::SoftFFmpegAudio(
       mReceivedEOS(false),
       mFrame(NULL),
       mAudioClock(0),
-      mNumFramesOutput(0),
       mInputBufferSize(0),
       mResampledDataSize(0),
-      mNumChannels(2),
-      mSamplingRate(44100),
-      mBitRate(0),
-      mBlockAlign(0),
-      mSamplingFmt(AV_SAMPLE_FMT_S16),
-      mAudioConfigChanged(false),
       mOutputPortSettingsChange(NONE) {
 
     setMode(name);
@@ -116,6 +109,7 @@ SoftFFmpegAudio::SoftFFmpegAudio(
 SoftFFmpegAudio::~SoftFFmpegAudio() {
     ALOGV("~SoftFFmpegAudio");
     av_freep(&mFrame);
+    mFrame = NULL;
     deInitDecoder();
     if (mFFmpegInited) {
         deInitFFmpeg();
@@ -247,16 +241,16 @@ void SoftFFmpegAudio::setAVCtxToDefault(AVCodecContext *avctx, const AVCodec *co
 
 
 void SoftFFmpegAudio::configDefaultCtx() {
-    mCtx->channels = mNumChannels;
-    mCtx->sample_rate = mSamplingRate;
-    mCtx->bit_rate = mBitRate;
-    mCtx->sample_fmt = mSamplingFmt;
+    mCtx->channels = 2;
+    mCtx->sample_rate = 44100;
+    mCtx->bit_rate = 0;
+    mCtx->sample_fmt = AV_SAMPLE_FMT_S16;
 
-    mAudioSrcChannels = mAudioTgtChannels = mNumChannels;
-    mAudioSrcFreq = mAudioTgtFreq = mSamplingRate;
+    mAudioSrcChannels = mAudioTgtChannels = 2;
+    mAudioSrcFreq = mAudioTgtFreq = 44100;
     mAudioSrcFmt = mAudioTgtFmt = AV_SAMPLE_FMT_S16;
     mAudioSrcChannelLayout = mAudioTgtChannelLayout =
-        av_get_default_channel_layout(mNumChannels);
+        av_get_default_channel_layout(2);
 }
 
 status_t SoftFFmpegAudio::initDecoder() {
@@ -296,7 +290,7 @@ status_t SoftFFmpegAudio::initDecoder() {
         mCtx->codec_id = CODEC_ID_WMAV2; // FIXME, CODEC_ID_WMAV1 or CODEC_ID_WMAV2?
         break;
     case MODE_RA:
-        mCtx->codec_id = CODEC_ID_COOK; // FIXME
+        mCtx->codec_id = CODEC_ID_COOK;
         break;
     case MODE_APE:
         mCtx->codec_id = CODEC_ID_APE;
@@ -350,9 +344,6 @@ void SoftFFmpegAudio::deInitDecoder() {
 
 OMX_ERRORTYPE SoftFFmpegAudio::internalGetParameter(
         OMX_INDEXTYPE index, OMX_PTR params) {
-    int32_t channels = 0;
-    int32_t sampling_rate = 0;
-
     switch (index) {
         case OMX_IndexParamAudioAac:
         {
@@ -466,21 +457,13 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalGetParameter(
             profile->eChannelMapping[0] = OMX_AUDIO_ChannelLF;
             profile->eChannelMapping[1] = OMX_AUDIO_ChannelRF;
 
-            // update src and target(except aac), only once!
-            adjustAudioParameter();
+            profile->nChannels = mCtx->channels;
+            profile->nSamplingRate = mCtx->sample_rate;
 
-            channels = mNumChannels >= 2 ? 2 : 1;
-
-            // 4000 <= sampling rate <= 48000
-            sampling_rate = mSamplingRate;
-            if (mSamplingRate < 4000) {
-                sampling_rate = 4000;
-            } else if (mSamplingRate > 48000) {
-                sampling_rate = 48000;
-            }
-
-            profile->nChannels = channels;
-            profile->nSamplingRate = sampling_rate;
+            //NOTE: mCtx is the default(configDefaultCtx), or has
+            //been updated(adjustAudioParameter)!!!
+            ALOGV("get pcm params, nChannels:%lu, nSamplingRate:%lu",
+                   profile->nChannels, profile->nSamplingRate);
 
             return OMX_ErrorNone;
         }
@@ -625,23 +608,18 @@ void SoftFFmpegAudio::adjustAudioParameter() {
     int32_t channels = 0;
     int32_t sampling_rate = 0;
 
-    mCtx->channels = mNumChannels;
-    mCtx->sample_rate = mSamplingRate;
-    mCtx->bit_rate = mBitRate;
-    mCtx->sample_fmt = mSamplingFmt;
+    sampling_rate = mCtx->sample_rate;
 
-    // channels support 1 or 2 only
-    channels = mNumChannels >= 2 ? 2 : 1;
+    //channels support 1 or 2 only
+    channels = mCtx->channels >= 2 ? 2 : 1;
 
-    // 4000 <= sampling rate <= 48000
-    sampling_rate = mSamplingRate;
-    if (mSamplingRate < 4000) {
+    //4000 <= sampling rate <= 48000
+    if (sampling_rate < 4000) {
         sampling_rate = 4000;
-    } else if (mSamplingRate > 48000) {
+    } else if (sampling_rate > 48000) {
         sampling_rate = 48000;
     }
 
-    // update src and target(only wma), only once!
     mAudioSrcChannels = mAudioTgtChannels = channels;
     mAudioSrcFreq = mAudioTgtFreq = sampling_rate;
     mAudioSrcFmt = mAudioTgtFmt = AV_SAMPLE_FMT_S16;
@@ -667,8 +645,14 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalSetParameter(
                 return OMX_ErrorUndefined;
             }
 
-            mNumChannels = profile->nChannels;
-            mSamplingRate = profile->nSamplingRate;
+            mCtx->channels = profile->nChannels;
+            mCtx->sample_rate = profile->nSamplingRate;
+            mCtx->bits_per_coded_sample = profile->nBitPerSample;
+
+            ALOGV("set OMX_IndexParamAudioPcm, nChannels:%lu, "
+                    "nSampleRate:%lu, nBitsPerSample:%lu",
+                profile->nChannels, profile->nSamplingRate,
+                profile->nBitPerSample);
 
             return OMX_ErrorNone;
         }
@@ -681,14 +665,13 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalSetParameter(
                 return OMX_ErrorUndefined;
             }
 
-            mNumChannels = profile->nChannels;
-            mSamplingRate = profile->nSampleRate;
+            mCtx->channels = profile->nChannels;
+            mCtx->sample_rate = profile->nSampleRate;
 
-            // update src and target(only aac), only once!
             adjustAudioParameter();
 
-            ALOGV("got OMX_IndexParamAudioAac, mNumChannels: %d, mSamplingRate: %d",
-                mNumChannels, mSamplingRate);
+            ALOGV("set OMX_IndexParamAudioAac, nChannels:%lu, nSamplingRate:%lu",
+                profile->nChannels, profile->nSampleRate);
 
             return OMX_ErrorNone;
         }
@@ -712,21 +695,19 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalSetParameter(
                 return OMX_ErrorUndefined;
             }
 
-            mNumChannels = profile->nChannels;
-            mSamplingRate = profile->nSamplingRate;
-            mBitRate = profile->nBitRate;
-            mBlockAlign = profile->nBlockAlign;
+            mCtx->channels = profile->nChannels;
+            mCtx->sample_rate = profile->nSamplingRate;
 
             // wmadec needs bitrate, block_align
-            mCtx->bit_rate = mBitRate;
-            mCtx->block_align = mBlockAlign;
+            mCtx->bit_rate = profile->nBitRate;
+            mCtx->block_align = profile->nBlockAlign;
 
-            // update src and target(only wma), only once!
             adjustAudioParameter();
 
-            ALOGV("got OMX_IndexParamAudioWma, mNumChannels: %d, "
-                    "mSamplingRate: %d, mBitRate: %d, mBlockAlign: %d",
-                mNumChannels, mSamplingRate, mBitRate, mBlockAlign);
+            ALOGV("set OMX_IndexParamAudioWma, nChannels:%u, "
+                    "nSampleRate:%lu, nBitRate:%lu, nBlockAlign:%u",
+                profile->nChannels, profile->nSamplingRate,
+                profile->nBitRate, profile->nBlockAlign);
 
             return OMX_ErrorNone;
         }
@@ -739,23 +720,18 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalSetParameter(
                 return OMX_ErrorUndefined;
             }
 
-            mCtx->codec_id = CODEC_ID_COOK;
+            mCtx->channels = profile->nChannels;
+            mCtx->sample_rate = profile->nSamplingRate;
 
-            mNumChannels = profile->nChannels;
-            mSamplingRate = profile->nSamplingRate;
             // FIXME, HACK!!!, I use the nNumRegions parameter pass blockAlign!!!
             // the cook audio codec need blockAlign!
-            mBlockAlign = profile->nNumRegions;
+            mCtx->block_align = profile->nNumRegions;
 
-            // cook decoder need block_align
-            mCtx->block_align = mBlockAlign;
-
-            // update src and target(only wma), only once!
             adjustAudioParameter();
 
-            ALOGV("got OMX_IndexParamAudioRa, mNumChannels: %d, "
-                    "mSamplingRate: %d, mBlockAlign: %d",
-                mNumChannels, mSamplingRate, mBlockAlign);
+            ALOGV("set OMX_IndexParamAudioRa, nChannels:%lu, "
+                    "nSampleRate:%lu, nBlockAlign:%d",
+                profile->nChannels, profile->nSamplingRate, mCtx->block_align);
 
             return OMX_ErrorNone;
         }
@@ -768,18 +744,18 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalSetParameter(
                 return OMX_ErrorUndefined;
             }
 
-            mNumChannels = profile->nChannels;
-            mSamplingRate = profile->nSamplingRate;
+            mCtx->channels = profile->nChannels;
+            mCtx->sample_rate = profile->nSamplingRate;
 
             // ape decoder need bits_per_coded_sample
             mCtx->bits_per_coded_sample = profile->nBitsPerSample;
 
-            // update src and target, only once!
             adjustAudioParameter();
 
-            ALOGV("got OMX_IndexParamAudioApe, mNumChannels: %d, "
-                    "mSamplingRate: %d, nBitsPerSample: %lu",
-                mNumChannels, mSamplingRate, profile->nBitsPerSample);
+            ALOGV("set OMX_IndexParamAudioApe, nChannels:%lu, "
+                    "nSampleRate:%lu, nBitsPerSample:%lu",
+                profile->nChannels, profile->nSamplingRate,
+                profile->nBitsPerSample);
 
             return OMX_ErrorNone;
         }
@@ -792,14 +768,13 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalSetParameter(
                 return OMX_ErrorUndefined;
             }
 
-            mNumChannels = profile->nChannels;
-            mSamplingRate = profile->nSamplingRate;
+            mCtx->channels = profile->nChannels;
+            mCtx->sample_rate = profile->nSamplingRate;
 
-            // update src and target, only once!
             adjustAudioParameter();
 
-            ALOGV("got OMX_IndexParamAudioDts, mNumChannels: %d, mSamplingRate: %d",
-                mNumChannels, mSamplingRate);
+            ALOGV("set OMX_IndexParamAudioDts, nChannels:%lu, nSamplingRate:%lu",
+                profile->nChannels, profile->nSamplingRate);
 
             return OMX_ErrorNone;
         }
@@ -812,14 +787,13 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalSetParameter(
                 return OMX_ErrorUndefined;
             }
 
-            mNumChannels = profile->nChannels;
-            mSamplingRate = profile->nSampleRate;
+            mCtx->channels = profile->nChannels;
+            mCtx->sample_rate = profile->nSampleRate;
 
-            // update src and target, only once!
             adjustAudioParameter();
 
-            ALOGV("got OMX_IndexParamAudioFlac, mNumChannels: %d, mSamplingRate: %d",
-                mNumChannels, mSamplingRate);
+            ALOGV("set OMX_IndexParamAudioFlac, nChannels:%lu, nSamplingRate:%lu",
+                profile->nChannels, profile->nSampleRate);
 
             return OMX_ErrorNone;
         }
@@ -832,8 +806,11 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalSetParameter(
                 return OMX_ErrorUndefined;
             }
 
-            ALOGD("got OMX_IndexParamAudioVorbis, "
-                    "mNumChannels=%lu, mSamplingRate=%lu, nBitRate=%lu, "
+            mCtx->channels = profile->nChannels;
+            mCtx->sample_rate = profile->nSampleRate;
+
+            ALOGD("set OMX_IndexParamAudioVorbis, "
+                    "nChannels=%lu, nSampleRate=%lu, nBitRate=%lu, "
                     "nMinBitRate=%lu, nMaxBitRate=%lu",
                 profile->nChannels, profile->nSampleRate,
                 profile->nBitRate, profile->nMinBitRate,
@@ -851,23 +828,17 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalSetParameter(
                     return OMX_ErrorUndefined;
                 }
 
-                mNumChannels = profile->nChannels;
-                mSamplingRate = profile->nSampleRate;
-                mBitRate = profile->nBitRate;
-                mSamplingFmt = (AVSampleFormat)profile->eSampleFormat;
-
                 mCtx->codec_id = (enum AVCodecID)profile->eCodecId; 
-                //mCtx->channels = profile->nChannels;
-                //mCtx->bit_rate = profile->nBitRate;
+                mCtx->channels = profile->nChannels;
+                mCtx->bit_rate = profile->nBitRate;
                 mCtx->bits_per_coded_sample = profile->nBitsPerSample;
-                //mCtx->sample_rate = profile->nSampleRate;
-                mCtx->block_align = mBlockAlign;
-                //mCtx->sample_fmt = profile->eSampleFormat;
+                mCtx->sample_rate = profile->nSampleRate;
+                mCtx->block_align = profile->nBlockAlign;
+                mCtx->sample_fmt = (AVSampleFormat)profile->eSampleFormat;
 
-                // FIXME, need to cleanup
                 adjustAudioParameter();
 
-                ALOGD("got OMX_IndexParamAudioFFmpeg, "
+                ALOGD("set OMX_IndexParamAudioFFmpeg, "
                     "eCodecId:%ld(%s), nChannels:%lu, nBitRate:%lu, "
                     "nBitsPerSample:%lu, nSampleRate:%lu, "
                     "nBlockAlign:%lu, eSampleFormat:%lu(%s)",
@@ -1001,11 +972,9 @@ void SoftFFmpegAudio::onQueueFilled(OMX_U32 portIndex) {
             setAVCtxToDefault(mCtx, mCtx->codec);
 
             ALOGD("begin to open ffmpeg audio decoder, mCtx sample_rate: %d, "
-                    "channels: %d, channel_layout: %llu, sample_fmt: %s",
-                mCtx->sample_rate, mCtx->channels, mCtx->channel_layout,
+                    "channels: %d, , sample_fmt: %s",
+                mCtx->sample_rate, mCtx->channels,
                 av_get_sample_fmt_name(mCtx->sample_fmt));
-
-            ALOGD("open ffmpeg decoder now");
 
             err = avcodec_open2(mCtx, mCtx->codec, NULL);
             if (err < 0) {
@@ -1018,8 +987,8 @@ void SoftFFmpegAudio::onQueueFilled(OMX_U32 portIndex) {
             mCodecAlreadyOpened = true;
 
             ALOGD("open ffmpeg audio decoder success, mCtx sample_rate: %d, "
-                    "channels: %d, channel_layout: %llu, sample_fmt: %s",
-                mCtx->sample_rate, mCtx->channels, mCtx->channel_layout,
+                    "channels: %d, sample_fmt: %s",
+                mCtx->sample_rate, mCtx->channels,
                 av_get_sample_fmt_name(mCtx->sample_fmt));
         }
 
@@ -1079,25 +1048,12 @@ void SoftFFmpegAudio::onQueueFilled(OMX_U32 portIndex) {
             //decode audio packet
             len = avcodec_decode_audio4(mCtx, mFrame, &gotFrm, &pkt);
 
-            // A negative error code is returned if an error occurred during decoding
+            //A negative error code is returned if an error occurred during decoding
             if (len < 0) {
                 ALOGE("ffmpeg audio decoder failed to decode frame. "
                         "consume pkt len: %d", len);
 
-                /* if !mAudioConfigChanged, Don't fill the out buffer */
-                if (!mAudioConfigChanged) {
-                    inInfo->mOwnedByUs = false;
-                    inQueue.erase(inQueue.begin());
-                    inInfo = NULL;
-                    notifyEmptyBufferDone(inHeader);
-                    inHeader = NULL;
-
-                    mInputBufferSize = 0; // need?
-                    continue;
-                }
-
-                //inputBufferUsedLength = inHeader->nFilledLen;
-                /* if error, we skip the frame and play silence instead */
+                //if error, we skip the frame and play silence instead
                 mResampledData = mSilenceBuffer;
                 mResampledDataSize = kOutputBufferSize; //FIXME, need to calculate the size
             }
@@ -1110,6 +1066,7 @@ void SoftFFmpegAudio::onQueueFilled(OMX_U32 portIndex) {
 				CHECK(mFlushComplete == false);
 
                 if (len < 0) {
+                    //if error, we skip the frame 
                     inputBufferUsedLength = mInputBufferSize;
                  } else {
                     inputBufferUsedLength = len;
@@ -1133,68 +1090,39 @@ void SoftFFmpegAudio::onQueueFilled(OMX_U32 portIndex) {
 
             if (!gotFrm) {
                 ALOGI("ffmpeg audio decoder failed to get more frame.");
-                /* stop sending empty packets if the decoder is finished */
+                //stop sending empty packets if the decoder is finished
                 if (!pkt.data && mCtx->codec->capabilities & CODEC_CAP_DELAY)
                     mFlushComplete = true;
                 continue;
             }
 
-            /**
-             * FIXME, check mAudioConfigChanged when the first time you call the audio4!
-             * mCtx->sample_rate and mCtx->channels may be changed by audio decoder later, why???
-             */
-            if (!mAudioConfigChanged) {
-                //if (mCtx->channels != mNumChannels || mCtx->sample_rate != mSamplingRate
-				//    || mCtx->sample_fmt != mSamplingFmt) {
-                if (mCtx->channels != mNumChannels || mCtx->sample_rate != mSamplingRate) {
-                    ALOGI("audio OMX_EventPortSettingsChanged, mCtx->channels: %d, "
-                            "mNumChannels: %d, mCtx->sample_rate: %d, mSamplingRate: %d, "
-                            "mCtx->sample_fmt: %s, mSamplingFmt: %s",
-                             mCtx->channels, mNumChannels, mCtx->sample_rate, mSamplingRate,
-                             av_get_sample_fmt_name(mCtx->sample_fmt),
-                             av_get_sample_fmt_name(mSamplingFmt));
-                    mNumChannels = mCtx->channels;
-                    mSamplingRate = mCtx->sample_rate;
-                    mSamplingFmt = mCtx->sample_fmt;
-                    mAudioConfigChanged = true;
-                    notify(OMX_EventPortSettingsChanged, 1, 0, NULL);
-                    mOutputPortSettingsChange = AWAITING_DISABLED;
-                    return;
-                } else {
-                    // match with the default, set mAudioConfigChanged true anyway!
-                    mAudioConfigChanged = true;
-                    mSamplingFmt = mCtx->sample_fmt;
-                }
-            }
-
-            dataSize = av_samples_get_buffer_size(NULL, mCtx->channels,
-                           mFrame->nb_samples, mCtx->sample_fmt, 1);
+            dataSize = av_samples_get_buffer_size(NULL, av_frame_get_channels(mFrame),
+                           mFrame->nb_samples, (enum AVSampleFormat)mFrame->format, 1);
 
 #if DEBUG_FRM
             ALOGV("ffmpeg audio decoder, nb_samples:%d, get buffer size:%d",
                     mFrame->nb_samples, dataSize);
-            ALOGV("ffmpeg audio decoder: mCtx channel_layout:%llu, "
-                    "channels:%d, channels_from_layout:%d",
-                mCtx->channel_layout,  mCtx->channels,
-                av_get_channel_layout_nb_channels(mCtx->channel_layout));
 #endif
 
-            decChannelLayout = av_get_default_channel_layout(mNumChannels);
-            if (mSamplingFmt != mAudioSrcFmt
+            decChannelLayout =
+                (mFrame->channel_layout && av_frame_get_channels(mFrame) == av_get_channel_layout_nb_channels(mFrame->channel_layout)) ?
+                mFrame->channel_layout : av_get_default_channel_layout(av_frame_get_channels(mFrame));
+
+            if (mFrame->format != mAudioSrcFmt
                     || decChannelLayout != mAudioSrcChannelLayout
-                    || mSamplingRate != mAudioSrcFreq) {
+                    || mFrame->sample_rate != mAudioSrcFreq) {
                 if (mSwrCtx)
                     swr_free(&mSwrCtx);
                 mSwrCtx = swr_alloc_set_opts(NULL,
-                        mAudioTgtChannelLayout, mAudioTgtFmt, mAudioTgtFreq,
-                        decChannelLayout,       mSamplingFmt, mSamplingRate,
+                        mAudioTgtChannelLayout, mAudioTgtFmt,                        mAudioTgtFreq,
+                        decChannelLayout,       (enum AVSampleFormat)mFrame->format, mFrame->sample_rate,
                         0, NULL);
                 if (!mSwrCtx || swr_init(mSwrCtx) < 0) {
                     ALOGE("Cannot create sample rate converter for conversion "
                             "of %d Hz %s %d channels to %d Hz %s %d channels!",
-                            mSamplingRate,
-                            av_get_sample_fmt_name(mSamplingFmt),
-                            mNumChannels,
+                            mFrame->sample_rate,
+                            av_get_sample_fmt_name((enum AVSampleFormat)mFrame->format),
+                            av_frame_get_channels(mFrame),
                             mAudioTgtFreq,
                             av_get_sample_fmt_name(mAudioTgtFmt),
                             mAudioTgtChannels);
@@ -1203,37 +1131,51 @@ void SoftFFmpegAudio::onQueueFilled(OMX_U32 portIndex) {
                     return;
                 }
 
+				char src_layout_name[1024] = {0};
+				char tgt_layout_name[1024] = {0};
+                av_get_channel_layout_string(src_layout_name, sizeof(src_layout_name),
+                        mCtx->channels, decChannelLayout);
+                av_get_channel_layout_string(tgt_layout_name, sizeof(tgt_layout_name),
+                        mAudioTgtChannels, mAudioTgtChannelLayout);
                 ALOGI("Create sample rate converter for conversion "
-                        "of %d Hz %s %d channels(%lld channel_layout) "
-                        "to %d Hz %s %d channels(%lld channel_layout)!",
-                        mSamplingRate,
-                        av_get_sample_fmt_name(mSamplingFmt),
-                        mNumChannels,
-                        mAudioTgtChannelLayout,
+                        "of %d Hz %s %d channels(%s) "
+                        "to %d Hz %s %d channels(%s)!",
+                        mFrame->sample_rate,
+                        av_get_sample_fmt_name((enum AVSampleFormat)mFrame->format),
+                        av_frame_get_channels(mFrame),
+                        src_layout_name,
                         mAudioTgtFreq,
                         av_get_sample_fmt_name(mAudioTgtFmt),
                         mAudioTgtChannels,
-                        decChannelLayout);
+                        tgt_layout_name);
 
                 mAudioSrcChannelLayout = decChannelLayout;
-                mAudioSrcChannels = mNumChannels;
-                mAudioSrcFreq = mSamplingRate;
-                mAudioSrcFmt = mSamplingFmt;
+                mAudioSrcChannels = av_frame_get_channels(mFrame);
+                mAudioSrcFreq = mFrame->sample_rate;
+                mAudioSrcFmt = (enum AVSampleFormat)mFrame->format;
             }
 
             if (mSwrCtx) {
                 const uint8_t **in = (const uint8_t **)mFrame->extended_data;
-                uint8_t *out[] = {mAudioBuffer2};
-                int out_count = sizeof(mAudioBuffer2) / mAudioTgtChannels /
-                    av_get_bytes_per_sample(mAudioTgtFmt);
+                uint8_t *out[] = {mAudioBuffer};
+                int out_count = sizeof(mAudioBuffer) / mAudioTgtChannels / av_get_bytes_per_sample(mAudioTgtFmt);
+                int out_size  = av_samples_get_buffer_size(NULL, mAudioTgtChannels, out_count, mAudioTgtFmt, 0);
+                int len2 = 0;
+                if (out_size < 0) {
+                    ALOGE("av_samples_get_buffer_size() failed");
+                    break; //TODO
+                }
 #if DEBUG_FRM
-                ALOGV("swr_convert 1, out_count: %d, mFrame->nb_samples: %d, "
-                        "src frm: %s, tgt frm: %s",
+                ALOGV("swr_convert 1, out_count:%d, mFrame->nb_samples:%d, "
+                        "src channel:%u, src fmt:%s, tgt channel:%u, tgt fmt:%s",
                     out_count, mFrame->nb_samples,
-                    av_get_sample_fmt_name(mCtx->sample_fmt),
+                    av_frame_get_channels(mFrame),
+                    av_get_sample_fmt_name((enum AVSampleFormat)mFrame->format),
+                    mAudioTgtChannels,
                     av_get_sample_fmt_name(mAudioTgtFmt));
 #endif
-                int len2 = swr_convert(mSwrCtx, out, out_count, in, mFrame->nb_samples);
+
+                len2 = swr_convert(mSwrCtx, out, out_count, in, mFrame->nb_samples);
                 if (len2 < 0) {
                     ALOGE("audio_resample() failed");
                     break;
@@ -1242,17 +1184,21 @@ void SoftFFmpegAudio::onQueueFilled(OMX_U32 portIndex) {
                     ALOGE("warning: audio buffer is probably too small");
                     swr_init(mSwrCtx);
                 }
-                mResampledData = mAudioBuffer2;
+                mResampledData = mAudioBuffer;
                 mResampledDataSize = len2 * mAudioTgtChannels *
                     av_get_bytes_per_sample(mAudioTgtFmt);
+#if DEBUG_FRM
+                ALOGV("swr_convert 2, len2:%d, mResampledDataSize:%d",
+                    len2, mResampledDataSize);
+#endif
             } else {
                 mResampledData = mFrame->data[0];
                 mResampledDataSize = dataSize;
             }
 
 #if DEBUG_FRM
-            ALOGV("ffmpeg audio decoder get frame. consume pkt len: %d, "
-                    "nb_samples(before resample): %d, mResampledDataSize: %d",
+            ALOGV("ffmpeg audio decoder get frame. consume pkt len:%d, "
+                    "nb_samples(before resample):%d, mResampledDataSize:%d",
                     len, mFrame->nb_samples, mResampledDataSize);
 #endif
         } //if ((inHeader && mResampledDataSize == 0) || (mReceivedEOS && !mFlushComplete))
@@ -1269,25 +1215,24 @@ void SoftFFmpegAudio::onQueueFilled(OMX_U32 portIndex) {
 
 #if DEBUG_FRM
         ALOGV("ffmpeg audio decoder, fill out buffer, "
-				"pts: %lld, mNumFramesOutput: %lld",
-                outHeader->nTimeStamp, mNumFramesOutput);
+				"pts: %lld", outHeader->nTimeStamp);
 #endif
 
         mResampledData += copyToOutputBufferLen;
         mResampledDataSize -= copyToOutputBufferLen;
-        mNumFramesOutput += copyToOutputBufferLen /
-            (av_get_bytes_per_sample(mAudioTgtFmt) * mNumChannels);
+        size_t numFramesOutput = copyToOutputBufferLen /
+            (av_get_bytes_per_sample(mAudioTgtFmt) * mAudioTgtChannels);
+
+
+#if DEBUG_FRM
+        ALOGV("ffmpeg audio decoder, copyToOutputBufferLen:%d, "
+                "mAudioTgtChannels:%d, mAudioTgtFreq:%d, bytes_per_sample:%d",
+                copyToOutputBufferLen, mAudioTgtChannels,
+                mAudioTgtFreq, av_get_bytes_per_sample(mAudioTgtFmt));
+#endif
 
         //update audio pts
-        mAudioClock += (mNumFramesOutput * 1000000ll) / mSamplingRate;
-
-        // reset mNumFramesOutput
-        if (mInputBufferSize == 0 && mResampledDataSize == 0) {
-#if DEBUG_FRM
-            ALOGV("~~~~ reset mNumFramesOutput to 0");
-#endif
-            mNumFramesOutput = 0;
-        }
+        mAudioClock += (numFramesOutput * 1000000ll) / mAudioTgtFreq;
 
         outInfo->mOwnedByUs = false;
         outQueue.erase(outQueue.begin());
@@ -1308,7 +1253,6 @@ void SoftFFmpegAudio::onPortFlushCompleted(OMX_U32 portIndex) {
 	mFlushComplete = false;
 	mAudioClock = 0;
 	mInputBufferSize = 0;
-	mNumFramesOutput = 0;
 	mResampledDataSize = 0;
 	mResampledData = NULL;
 	//don't free mFrame!

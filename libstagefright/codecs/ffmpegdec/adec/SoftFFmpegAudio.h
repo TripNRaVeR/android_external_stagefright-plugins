@@ -116,24 +116,17 @@ private:
     AVFrame *mFrame;
 
     int64_t mAudioClock;
-    int64_t mNumFramesOutput;
     int32_t mInputBufferSize;
 
     //"Fatal signal 7 (SIGBUS)"!!! SIGBUS is because of an alignment exception
     //LOCAL_CFLAGS += -D__GNUC__=1 in *.cpp file
-    DECLARE_ALIGNED(16, uint8_t, mAudioBuffer2)[192000 * 4];
+    //Don't malloc mAudioBuffer", because "NEON optimised stereo fltp to s16
+    //conversion" require byte alignment.
+   DECLARE_ALIGNED(16, uint8_t, mAudioBuffer)[192000 * 4];
 
     uint8_t mSilenceBuffer[kOutputBufferSize];
     uint8_t *mResampledData;
     int32_t mResampledDataSize;
-
-    int32_t mNumChannels;
-    int32_t mSamplingRate;
-    /* some audio codec need bit rate when init, e.g. wma, and should be > 0 */
-    int32_t mBitRate;
-    int32_t mBlockAlign;
-    AVSampleFormat mSamplingFmt;
-    bool mAudioConfigChanged;
 
     enum AVSampleFormat mAudioSrcFmt;
     enum AVSampleFormat mAudioTgtFmt;
