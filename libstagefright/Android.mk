@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2008 The Android Open Source Project
+# Copyright (C) 2013 TripNDroid Mobile Engineering
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,50 +14,4 @@
 # limitations under the License.
 #
 
-LOCAL_PATH := $(call my-dir)
-
-include $(CLEAR_VARS)
-
-FFMPEG_SRC_DIR := $(TOP)/external/ffmpeg
-
-LOCAL_SRC_FILES := \
-	NamExtractor.cpp
-
-LOCAL_C_INCLUDES := \
-	$(JNI_H_INCLUDE) \
-	$(TOP)/frameworks/base/include \
-	$(TOP)/frameworks/base/include/media/stagefright/openmax \
-	$(TOP)/frameworks/base/media/libstagefright
-
-LOCAL_C_INCLUDES += \
-	$(TOP)/external/stagefright-plugins \
-	$(TOP)/external/stagefright-plugins/libstagefright \
-
-LOCAL_C_INCLUDES += \
-	$(FFMPEG_SRC_DIR) \
-	$(FFMPEG_SRC_DIR)/android/include
-
-LOCAL_SHARED_LIBRARIES := \
-	libutils        \
-	libcutils       \
-	libstagefright  \
-	libstagefright_foundation \
-	libFFmpegExtractor
-
-LOCAL_MODULE:= libnamparser
-
-LOCAL_MODULE_TAGS := optional
-
-ifeq ($(TARGET_ARCH),arm)
-    LOCAL_CFLAGS += -Wno-psabi
-endif
-
-LOCAL_CFLAGS += -D__STDC_CONSTANT_MACROS=1
-
-ifeq ($(TARGET_ARCH),arm)
-LOCAL_CFLAGS += -fpermissive
-endif
-
-include $(BUILD_SHARED_LIBRARY)
-
-include $(call all-makefiles-under,$(LOCAL_PATH))
+include $(call all-subdir-makefiles)
