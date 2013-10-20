@@ -21,6 +21,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libavutil         \
 	libavcodec        \
 	libswresample     \
+	libpostproc     \
 	libffmpeg_utils   \
 	libstagefright    \
 	libstagefright_omx \
