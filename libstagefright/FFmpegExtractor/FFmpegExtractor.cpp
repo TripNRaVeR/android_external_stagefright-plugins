@@ -1706,7 +1706,7 @@ typedef struct {
 static formatmap FILE_FORMATS[] = {
         {"mpeg",                    MEDIA_MIMETYPE_CONTAINER_MPEG2PS  },
         {"mpegts",                  MEDIA_MIMETYPE_CONTAINER_TS       },
-        {"mov,mp4,m4a,3gp,3g2,mj2", MEDIA_MIMETYPE_CONTAINER_MPEG4    },
+        {"mov,mp4,mp4a,m4a,3gp,3g2,mj2", MEDIA_MIMETYPE_CONTAINER_MPEG4    },
         {"matroska,webm",           MEDIA_MIMETYPE_CONTAINER_MATROSKA },
         {"asf",                     MEDIA_MIMETYPE_CONTAINER_ASF      },
         {"rm",                      MEDIA_MIMETYPE_CONTAINER_RM       },
