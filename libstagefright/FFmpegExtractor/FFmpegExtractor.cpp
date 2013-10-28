@@ -22,8 +22,6 @@
 #include <limits.h> /* INT_MAX */
 #include <inttypes.h>
 
-#include <../../hardware/qcom/media-caf/mm-core/inc/QCMetaData.h>
-
 #include <media/stagefright/foundation/ABitReader.h>
 #include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/ADebug.h>
@@ -1812,7 +1810,7 @@ static void adjustConfidenceIfNeeded(const char *mime,
 		AVFormatContext *ic, float *confidence)
 {
 	//check mime
-	if (!av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG4)) {
+	if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG4)) {
 		adjustMPEG4Confidence(ic, confidence);
 	} else {
 		//add to here;
@@ -1957,7 +1955,7 @@ bool SniffFFMPEG(
 			container, *confidence);
 
 	/* use MPEG4Extractor(not extended extractor) for HTTP source only */
-	if (!av_strcasecmp(container, MEDIA_MIMETYPE_CONTAINER_MPEG4)
+	if (!strcasecmp(container, MEDIA_MIMETYPE_CONTAINER_MPEG4)
 			&& (source->flags() & DataSource::kIsCachingDataSource)) {
 		ALOGI("support container: %s, but it is caching data source, "
 				"Don't use ffmpegextractor", container);
@@ -1989,28 +1987,28 @@ MediaExtractor *CreateFFmpegExtractor(const sp<DataSource> &source, const char *
     MediaExtractor *ret = NULL;
     AString notuse;
     if (meta.get() && meta->findString("extended-extractor", &notuse) && (
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG4)     ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG)          ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AC3)           ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MOV)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MATROSKA)  ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_TS)        ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG2PS)   ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_AVI)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_ASF)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_WEBM)      ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_WMV)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPG)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_FLV)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_DIVX)      ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_RM)        ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_WAV)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_FLAC)      ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_APE)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_DTS)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MP2)       ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_RA)        ||
-            !av_strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_WMA))) {
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG4)     ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG)          ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AC3)           ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MOV)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MATROSKA)  ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_TS)        ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG2PS)   ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_AVI)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_ASF)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_WEBM)      ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_WMV)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPG)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_FLV)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_DIVX)      ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_RM)        ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_WAV)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_FLAC)      ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_APE)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_DTS)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MP2)       ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_RA)        ||
+            !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_WMA))) {
         ret = new FFmpegExtractor(source);
     }
 
