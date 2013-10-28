@@ -65,7 +65,7 @@ void SoftFFmpegVideo::setMode(const char *name) {
         mMode = MODE_DIVX;
     } else if (!strcmp(name, "OMX.ffmpeg.wmv.decoder")) {
         mMode = MODE_WMV;
-    } else if (!strcmp(name, "OMX.ffmpeg.flv.decoder")) {
+    } else if (!strcmp(name, "OMX.ffmpeg.flv1.decoder")) {
         mMode = MODE_FLV;
     } else if (!strcmp(name, "OMX.ffmpeg.rv.decoder")) {
         mMode = MODE_RV;
@@ -157,7 +157,7 @@ void SoftFFmpegVideo::initPorts() {
         break;
     case MODE_FLV:
         def.format.video.cMIMEType = const_cast<char *>(MEDIA_MIMETYPE_VIDEO_FLV1);
-        def.format.video.eCompressionFormat = OMX_VIDEO_CodingAutoDetect; // no flv omx codec
+        def.format.video.eCompressionFormat = OMX_VIDEO_CodingFLV1;
         break;
     case MODE_RV:
         def.format.video.cMIMEType = const_cast<char *>(MEDIA_MIMETYPE_VIDEO_RV);
@@ -399,7 +399,7 @@ OMX_ERRORTYPE SoftFFmpegVideo::internalGetParameter(
                     formatParams->eCompressionFormat = OMX_VIDEO_CodingRV;
                     break;
                 case MODE_FLV:
-                    formatParams->eCompressionFormat = OMX_VIDEO_CodingAutoDetect;
+                    formatParams->eCompressionFormat = OMX_VIDEO_CodingFLV1;
                     break;
                 case MODE_HEURISTIC:
                     formatParams->eCompressionFormat = OMX_VIDEO_CodingAutoDetect;
