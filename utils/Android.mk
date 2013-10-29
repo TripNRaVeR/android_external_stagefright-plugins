@@ -12,6 +12,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libavcodec \
 	libavformat \
 	libavutil \
+	libpostproc \
+	libswscale \
 	libutils \
 	libcutils
 

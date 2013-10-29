@@ -20,6 +20,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils         \
 	libavutil         \
 	libavcodec        \
+	libavformat     \
 	libswscale        \
 	libpostproc        \
 	libffmpeg_utils   \

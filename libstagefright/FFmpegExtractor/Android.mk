@@ -25,6 +25,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libavformat       \
 	libavutil         \
 	libpostproc         \
+	libswscale       \
 	libffmpeg_utils   \
 	libstagefright    \
 	libstagefright_foundation
