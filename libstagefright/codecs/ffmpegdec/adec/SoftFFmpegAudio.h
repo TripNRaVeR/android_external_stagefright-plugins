@@ -15,6 +15,7 @@
  */
 
 #ifndef SOFT_FFMPEGAUDIO_H_
+
 #define SOFT_FFMPEGAUDIO_H_
 
 #include "SimpleSoftOMXComponent.h"
@@ -54,6 +55,8 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
+
+const int AVCODEC_MAX_AUDIO_FRAME_SIZE = 192000;
 
 namespace android {
 
@@ -122,7 +125,7 @@ private:
     //LOCAL_CFLAGS += -D__GNUC__=1 in *.cpp file
     //Don't malloc mAudioBuffer", because "NEON optimised stereo fltp to s16
     //conversion" require byte alignment.
-   DECLARE_ALIGNED(16, uint8_t, mAudioBuffer)[192000 * 4];
+    DECLARE_ALIGNED(16, uint8_t, mAudioBuffer)[AVCODEC_MAX_AUDIO_FRAME_SIZE * 4];
 
     uint8_t mSilenceBuffer[kOutputBufferSize];
     uint8_t *mResampledData;

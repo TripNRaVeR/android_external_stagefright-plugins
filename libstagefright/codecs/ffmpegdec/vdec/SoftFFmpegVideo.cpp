@@ -495,6 +495,11 @@ OMX_ERRORTYPE SoftFFmpegVideo::isRoleSupported(
                 "video_decoder.h263", OMX_MAX_STRINGNAME_SIZE - 1))
             supported =  false;
             break;
+    case MODE_FLV:
+        if (strncmp((const char *)roleParams->cRole,
+                "video_decoder.flv1", OMX_MAX_STRINGNAME_SIZE - 1))
+            supported =  false;
+            break;
     case MODE_VPX:
         if (strncmp((const char *)roleParams->cRole,
                 "video_decoder.vpx", OMX_MAX_STRINGNAME_SIZE - 1))
