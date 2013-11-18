@@ -57,8 +57,10 @@ void SoftFFmpegVideo::setMode(const char *name) {
         mMode = MODE_MPEG2;
     } else if (!strcmp(name, "OMX.ffmpeg.h263.decoder")) {
         mMode = MODE_H263;
-    } else if (!strcmp(name, "OMX.ffmpeg.vpx.decoder")) {
-        mMode = MODE_VPX;
+    } else if (!strcmp(name, "OMX.ffmpeg.vp8.decoder")) {
+        mMode = MODE_VP8;
+    } else if (!strcmp(name, "OMX.ffmpeg.vp9.decoder")) {
+        mMode = MODE_VP9;
     } else if (!strcmp(name, "OMX.ffmpeg.vc1.decoder")) {
         mMode = MODE_VC1;
     } else if (!strcmp(name, "OMX.ffmpeg.divx.decoder")) {
@@ -143,9 +145,13 @@ void SoftFFmpegVideo::initPorts() {
         def.format.video.cMIMEType = const_cast<char *>(MEDIA_MIMETYPE_VIDEO_H263);
         def.format.video.eCompressionFormat = OMX_VIDEO_CodingH263;
         break;
-    case MODE_VPX:
-        def.format.video.cMIMEType = const_cast<char *>(MEDIA_MIMETYPE_VIDEO_VPX);
-        def.format.video.eCompressionFormat = OMX_VIDEO_CodingVPX;
+    case MODE_VP8:
+        def.format.video.cMIMEType = const_cast<char *>(MEDIA_MIMETYPE_VIDEO_VP8);
+        def.format.video.eCompressionFormat = OMX_VIDEO_CodingVP8;
+        break;
+    case MODE_VP9:
+        def.format.video.cMIMEType = const_cast<char *>(MEDIA_MIMETYPE_VIDEO_VP9);
+        def.format.video.eCompressionFormat = OMX_VIDEO_CodingVP9;
         break;
     case MODE_VC1:
         def.format.video.cMIMEType = const_cast<char *>(MEDIA_MIMETYPE_VIDEO_VC1);
@@ -269,8 +275,11 @@ status_t SoftFFmpegVideo::initDecoder() {
         //mCtx->codec_id = CODEC_ID_H263P;
         //mCtx->codec_id = CODEC_ID_H263I;
         break;
-    case MODE_VPX:
+    case MODE_VP8:
         mCtx->codec_id = CODEC_ID_VP8;
+        break;
+    case MODE_VP9:
+        mCtx->codec_id = CODEC_ID_VP9;
         break;
     case MODE_VC1:
         mCtx->codec_id = CODEC_ID_VC1;
@@ -386,8 +395,11 @@ OMX_ERRORTYPE SoftFFmpegVideo::internalGetParameter(
                 case MODE_H263:
                     formatParams->eCompressionFormat = OMX_VIDEO_CodingH263;
                     break;
-                case MODE_VPX:
-                    formatParams->eCompressionFormat = OMX_VIDEO_CodingVPX;
+                case MODE_VP8:
+                    formatParams->eCompressionFormat = OMX_VIDEO_CodingVP8;
+                    break;
+                case MODE_VP9:
+                    formatParams->eCompressionFormat = OMX_VIDEO_CodingVP9;
                     break;
                 case MODE_VC1:
                     formatParams->eCompressionFormat = OMX_VIDEO_CodingWMV;
@@ -500,9 +512,14 @@ OMX_ERRORTYPE SoftFFmpegVideo::isRoleSupported(
                 "video_decoder.flv1", OMX_MAX_STRINGNAME_SIZE - 1))
             supported =  false;
             break;
-    case MODE_VPX:
+    case MODE_VP8:
         if (strncmp((const char *)roleParams->cRole,
-                "video_decoder.vpx", OMX_MAX_STRINGNAME_SIZE - 1))
+                "video_decoder.vp8", OMX_MAX_STRINGNAME_SIZE - 1))
+            supported =  false;
+            break;
+    case MODE_VP9:
+        if (strncmp((const char *)roleParams->cRole,
+                "video_decoder.vp9", OMX_MAX_STRINGNAME_SIZE - 1))
             supported =  false;
             break;
     case MODE_VC1:
