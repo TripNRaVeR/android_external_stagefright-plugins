@@ -121,7 +121,7 @@ void SoftFFmpegVideo::initPorts() {
     def.eDir = OMX_DirInput;
     def.nBufferCountMin = kNumInputBuffers;
     def.nBufferCountActual = def.nBufferCountMin;
-    def.nBufferSize = 1280 * 720; // 256 * 1024?
+    def.nBufferSize = 1280 * 720 * 3 / 2;
     def.bEnabled = OMX_TRUE;
     def.bPopulated = OMX_FALSE;
     def.eDomain = OMX_PortDomainVideo;
@@ -155,7 +155,7 @@ void SoftFFmpegVideo::initPorts() {
         break;
     case MODE_VC1:
         def.format.video.cMIMEType = const_cast<char *>(MEDIA_MIMETYPE_VIDEO_VC1);
-        def.format.video.eCompressionFormat = OMX_VIDEO_CodingWMV;
+        def.format.video.eCompressionFormat = OMX_VIDEO_CodingVC1;
         break;
     case MODE_WMV:
         def.format.video.cMIMEType = const_cast<char *>(MEDIA_MIMETYPE_VIDEO_WMV);
