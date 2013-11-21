@@ -1,5 +1,6 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
+include external/ffmpeg/android/ffmpeg.mk
 
 FFMPEG_SRC_DIR := $(TOP)/external/ffmpeg
 
@@ -9,7 +10,7 @@ LOCAL_SRC_FILES := \
 LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/../../../.. \
 	$(TOP)/frameworks/av/media/libstagefright/include \
-	$(TOP)/frameworks/native/include/media/openmax \
+	$(TOP)/frameworks/native/include/media/openmax
 
 LOCAL_C_INCLUDES += \
 	$(FFMPEG_SRC_DIR) \
@@ -33,9 +34,6 @@ LOCAL_MODULE_TAGS := optional
 ifeq ($(TARGET_ARCH),arm)
     LOCAL_CFLAGS += -Wno-psabi
 endif
-
-#fix DECLARE_ALIGNED 
-#LOCAL_CFLAGS += -D__GNUC__=1
 
 LOCAL_CFLAGS += -D__STDC_CONSTANT_MACROS=1
 

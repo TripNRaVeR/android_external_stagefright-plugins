@@ -15,24 +15,11 @@
  */
 
 #ifndef SUPER_EXTRACTOR_H_
-
 #define SUPER_EXTRACTOR_H_
 
 #include <media/stagefright/foundation/ABase.h>
 #include <media/stagefright/MediaExtractor.h>
-#include <utils/threads.h>
-#include <utils/KeyedVector.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#include <inttypes.h>
-#include <math.h>
-#include <signal.h>
-#include <limits.h> /* INT_MAX */
-
-#include "config.h"
 #include "libavutil/avstring.h"
 #include "libavutil/colorspace.h"
 #include "libavutil/mathematics.h"
@@ -45,24 +32,12 @@ extern "C" {
 #include "libavformat/avformat.h"
 #include "libavdevice/avdevice.h"
 #include "libswscale/swscale.h"
-#include "libavcodec/audioconvert.h"
-#include "libavutil/opt.h"
-#include "libavutil/internal.h"
-#include "libavcodec/avfft.h"
 #include "libswresample/swresample.h"
 
-#ifdef __cplusplus
-}
-#endif
+#include <utils/threads.h>
+#include <utils/KeyedVector.h>
 
-typedef struct PacketQueue {
-    AVPacketList *first_pkt, *last_pkt;
-    int nb_packets;
-    int size;
-    int abort_request;
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
-} PacketQueue;
+#include "utils/ffmpeg_utils.h"
 
 namespace android {
 
@@ -126,8 +101,6 @@ private:
     int mAudioStreamIdx;
     AVStream *mVideoStream;
     AVStream *mAudioStream;
-    bool mVideoQInited;
-    bool mAudioQInited;
     bool mDefersToCreateVideoTrack;
     bool mDefersToCreateAudioTrack;
     AVBitStreamFilterContext *mVideoBsfc;
@@ -136,18 +109,15 @@ private:
     static int decode_interrupt_cb(void *ctx);
     int initStreams();
     void deInitStreams();
-    void buildFileName(const sp<AMessage> &meta);
+    void fetchStuffsFromSniffedMeta(const sp<AMessage> &meta);
     void setFFmpegDefaultOpts();
     void printTime(int64_t time);
-	bool is_codec_supported(enum AVCodecID codec_id);
+    bool is_codec_supported(enum AVCodecID codec_id);
+    sp<MetaData> setVideoFormat(AVStream *stream);
+    sp<MetaData> setAudioFormat(AVStream *stream);
+    void setDurationMetaData(AVStream *stream, sp<MetaData> &meta);
     int stream_component_open(int stream_index);
     void stream_component_close(int stream_index);
-    void packet_queue_init(PacketQueue *q);
-    void packet_queue_flush(PacketQueue *q);
-    void packet_queue_end(PacketQueue *q);
-    void packet_queue_abort(PacketQueue *q);
-    int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block);
-    int packet_queue_put(PacketQueue *q, AVPacket *pkt);
     void reachedEOS(enum AVMediaType media_type);
     int stream_seek(int64_t pos, enum AVMediaType media_type);
     int check_extradata(AVCodecContext *avctx);
@@ -166,7 +136,7 @@ bool SniffFFMPEG(
         const sp<DataSource> &source, String8 *mimeType, float *confidence,
         sp<AMessage> *);
 
-}  // namespace android
+} // namespace android
 
 #endif  // SUPER_EXTRACTOR_H_
 
