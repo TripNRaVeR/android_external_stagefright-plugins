@@ -1,5 +1,6 @@
 /*
  * Copyright 2012 Michael Chen <omxcodec@gmail.com>
+ * Copyright 2015 The CyanogenMod Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +15,8 @@
  * limitations under the License.
  */
 
-#define LOG_NDEBUG 0
+//#define LOG_NDEBUG 0
 #define LOG_TAG "FFMPEG"
-
 #include <utils/Log.h>
 
 #include <utils/Errors.h>
@@ -32,6 +32,7 @@ extern "C" {
 #include <inttypes.h>
 #include <math.h>
 #include <limits.h> /* INT_MAX */
+#include <time.h>
 
 #undef strncpy
 #include <string.h>
@@ -45,34 +46,22 @@ extern "C" {
 #include "ffmpeg_utils.h"
 #include "ffmpeg_source.h"
 
+// log
 static int flags;
 
+// dummy
 const char program_name[] = "dummy";
 const int program_birth_year = 2012;
 
+// init ffmpeg
 static pthread_mutex_t s_init_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int s_ref_count = 0;
 
 namespace android {
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void exit_program(int ret)
-{
-    // do nothing
-}
-
-void show_help_default(const char *opt, const char *arg)
-{
-    // do nothing
-}
-
-#ifdef __cplusplus
-}
-#endif
-
+//////////////////////////////////////////////////////////////////////////////////
+// log
+//////////////////////////////////////////////////////////////////////////////////
 static void sanitize(uint8_t *line){
     while(*line){
         if(*line < 0x08 || (*line > 0x0D && *line < 0x20))
@@ -105,6 +94,9 @@ void nam_av_log_callback(void* ptr, int level, const char* fmt, va_list vl)
     strcpy(prev, line);
     sanitize((uint8_t *)line);
 
+#if 0
+    ALOGI("%s", line);
+#else
 #define LOG_BUF_SIZE 1024
     static char g_msg[LOG_BUF_SIZE];
     static int g_msg_len = 0;
@@ -114,6 +106,7 @@ void nam_av_log_callback(void* ptr, int level, const char* fmt, va_list vl)
     do {
         check_len = g_msg_len + strlen(line) + 1;
         if (check_len <= LOG_BUF_SIZE) {
+            /* lf: Line feed ('\n') */
             saw_lf = (strchr(line, '\n') != NULL) ? 1 : 0;
             strncpy(g_msg + g_msg_len, line, strlen(line));
             g_msg_len += strlen(line);
@@ -121,18 +114,21 @@ void nam_av_log_callback(void* ptr, int level, const char* fmt, va_list vl)
                /* skip */
                return;
             } else {
+               /* attach the line feed */
                g_msg_len += 1;
                g_msg[g_msg_len] = '\n';
             }
         } else {
+            /* trace is fragmented */
             g_msg_len += 1;
             g_msg[g_msg_len] = '\n';
         }
         ALOGI("%s", g_msg);
-
+        /* reset g_msg and g_msg_len */
         memset(g_msg, 0, LOG_BUF_SIZE);
         g_msg_len = 0;
      } while (check_len > LOG_BUF_SIZE);
+#endif
 }
 
 void nam_av_log_set_flags(int arg)
@@ -140,6 +136,31 @@ void nam_av_log_set_flags(int arg)
     flags = arg;
 }
 
+#if 0
+const struct { const char *name; int level; } log_levels[] = {
+    { "quiet"  , AV_LOG_QUIET   },
+    { "panic"  , AV_LOG_PANIC   },
+    { "fatal"  , AV_LOG_FATAL   },
+    { "error"  , AV_LOG_ERROR   },
+    { "warning", AV_LOG_WARNING },
+    { "info"   , AV_LOG_INFO    },
+    { "verbose", AV_LOG_VERBOSE },
+    { "debug"  , AV_LOG_DEBUG   },
+};
+
+#define AV_LOG_QUIET    -8
+#define AV_LOG_PANIC     0
+#define AV_LOG_FATAL     8
+#define AV_LOG_ERROR    16
+#define AV_LOG_WARNING  24
+#define AV_LOG_INFO     32
+#define AV_LOG_VERBOSE  40
+#define AV_LOG_DEBUG    48
+#endif
+
+//////////////////////////////////////////////////////////////////////////////////
+// constructor and destructor
+//////////////////////////////////////////////////////////////////////////////////
 /* Mutex manager callback. */
 static int lockmgr(void **mtx, enum AVLockOp op)
 {
@@ -161,6 +182,12 @@ static int lockmgr(void **mtx, enum AVLockOp op)
     return 1;
 }
 
+/**
+ * To debug ffmpeg", type this command on the console before starting playback:
+ *     setprop debug.nam.ffmpeg 1
+ * To disable the debug, type:
+ *     setprop debug.nam.ffmpge 0
+*/
 status_t initFFmpeg() 
 {
     status_t ret = OK;
@@ -169,6 +196,11 @@ status_t initFFmpeg()
 
     pthread_mutex_lock(&s_init_mutex);
 
+    if (property_get("debug.nam.ffmpeg", value, NULL)
+        && (!strcmp(value, "1") || !av_strcasecmp(value, "true"))) {
+        ALOGI("set ffmpeg debug level to AV_LOG_DEBUG");
+        debug_enabled = true;
+    }
     if (debug_enabled)
         av_log_set_level(AV_LOG_DEBUG);
     else
@@ -180,7 +212,7 @@ status_t initFFmpeg()
 
         /* register all codecs, demux and protocols */
         avcodec_register_all();
-#if CONFIG_AVDEVICE
+#if 0
         avdevice_register_all();
 #endif
         av_register_all();
@@ -195,6 +227,7 @@ status_t initFFmpeg()
         }
     }
 
+    // update counter
     s_ref_count++;
 
     pthread_mutex_unlock(&s_init_mutex);
@@ -206,6 +239,7 @@ void deInitFFmpeg()
 {
     pthread_mutex_lock(&s_init_mutex);
 
+    // update counter
     s_ref_count--;
 
     if(s_ref_count == 0) {
@@ -216,14 +250,19 @@ void deInitFFmpeg()
     pthread_mutex_unlock(&s_init_mutex);
 }
 
+//////////////////////////////////////////////////////////////////////////////////
+// parser
+//////////////////////////////////////////////////////////////////////////////////
 /* H.264 bitstream with start codes, NOT AVC1! */
-static int h264_split(AVCodecContext *avctx,
-		const uint8_t *buf, int buf_size, int check_compatible_only)
+static int h264_split(AVCodecContext *avctx __unused,
+        const uint8_t *buf, int buf_size, int check_compatible_only)
 {
     int i;
     uint32_t state = -1;
     int has_sps= 0;
     int has_pps= 0;
+
+    //av_hex_dump(stderr, buf, 100);
 
     for(i=0; i<=buf_size; i++){
         if((state&0xFFFFFF1F) == 0x107) {
@@ -237,9 +276,9 @@ static int h264_split(AVCodecContext *avctx,
                 return (has_sps & has_pps);
         }
         if((state&0xFFFFFF00) == 0x100
-				&& ((state&0xFFFFFF1F) == 0x101
-					|| (state&0xFFFFFF1F) == 0x102
-					|| (state&0xFFFFFF1F) == 0x105)){
+                && ((state&0xFFFFFF1F) == 0x101
+                    || (state&0xFFFFFF1F) == 0x102
+                    || (state&0xFFFFFF1F) == 0x105)){
             if(has_pps){
                 while(i>4 && buf[i-5]==0) i--;
                 return i-4;
@@ -251,8 +290,8 @@ static int h264_split(AVCodecContext *avctx,
     return 0;
 }
 
-static int mpegvideo_split(AVCodecContext *avctx,
-		const uint8_t *buf, int buf_size, int check_compatible_only)
+static int mpegvideo_split(AVCodecContext *avctx __unused,
+        const uint8_t *buf, int buf_size, int check_compatible_only __unused)
 {
     int i;
     uint32_t state= -1;
@@ -268,8 +307,9 @@ static int mpegvideo_split(AVCodecContext *avctx,
     return 0;
 }
 
+/* split extradata from buf for Android OMXCodec */
 int parser_split(AVCodecContext *avctx,
-		const uint8_t *buf, int buf_size)
+        const uint8_t *buf, int buf_size)
 {
     if (!avctx || !buf || buf_size <= 0) {
         ALOGE("parser split, valid params");
@@ -292,79 +332,64 @@ int is_extradata_compatible_with_android(AVCodecContext *avctx)
 {
     if (avctx->extradata_size <= 0) {
         ALOGI("extradata_size <= 0, extradata is not compatible with "
-				"android decoder, the codec id: 0x%0x", avctx->codec_id);
+                "android decoder, the codec id: 0x%0x", avctx->codec_id);
         return 0;
     }
 
     if (avctx->codec_id == AV_CODEC_ID_H264
-			&& avctx->extradata[0] != 1) {
+            && avctx->extradata[0] != 1 /* configurationVersion */) {
         // SPS + PPS
         return !!(h264_split(avctx, avctx->extradata,
-					avctx->extradata_size, 1) > 0);
+                    avctx->extradata_size, 1) > 0);
     } else {
+        // default, FIXME
         return !!(avctx->extradata_size > 0);
     }
 }
 
+//////////////////////////////////////////////////////////////////////////////////
+// packet queue
+//////////////////////////////////////////////////////////////////////////////////
 void packet_queue_init(PacketQueue *q)
 {
     memset(q, 0, sizeof(PacketQueue));
-    pthread_mutex_init(&q->mutex, NULL);
-    pthread_cond_init(&q->cond, NULL);
-
-    av_init_packet(&q->flush_pkt);
-    q->flush_pkt.data = (uint8_t *)&q->flush_pkt;
-    q->flush_pkt.size = 0;
-
-    packet_queue_put(q, &q->flush_pkt);
+    q->abort_request = 1;
 }
 
 void packet_queue_destroy(PacketQueue *q)
 {
+    packet_queue_abort(q);
     packet_queue_flush(q);
-    pthread_mutex_destroy(&q->mutex);
-    pthread_cond_destroy(&q->cond);
 }
 
 void packet_queue_flush(PacketQueue *q)
 {
     AVPacketList *pkt, *pkt1;
 
-    pthread_mutex_lock(&q->mutex);
+    Mutex::Autolock autoLock(q->lock);
     for (pkt = q->first_pkt; pkt != NULL; pkt = pkt1) {
         pkt1 = pkt->next;
-        av_free_packet(&pkt->pkt);
+        av_packet_unref(&pkt->pkt);
         av_freep(&pkt);
     }
     q->last_pkt = NULL;
     q->first_pkt = NULL;
     q->nb_packets = 0;
     q->size = 0;
-    pthread_mutex_unlock(&q->mutex);
-}
-
-void packet_queue_end(PacketQueue *q)
-{
-    packet_queue_flush(q);
 }
 
 void packet_queue_abort(PacketQueue *q)
 {
-    pthread_mutex_lock(&q->mutex);
-
     q->abort_request = 1;
-
-    pthread_cond_signal(&q->cond);
-
-    pthread_mutex_unlock(&q->mutex);
+    Mutex::Autolock autoLock(q->lock);
+    q->cond.signal();
 }
 
-int packet_queue_put(PacketQueue *q, AVPacket *pkt)
+static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
 {
     AVPacketList *pkt1;
 
-    /* duplicate the packet */
-    if (pkt != &q->flush_pkt && av_dup_packet(pkt) < 0)
+    if (q->abort_request)
         return -1;
 
     pkt1 = (AVPacketList *)av_malloc(sizeof(AVPacketList));
@@ -373,20 +398,40 @@ int packet_queue_put(PacketQueue *q, AVPacket *pkt)
     pkt1->pkt = *pkt;
     pkt1->next = NULL;
 
-    pthread_mutex_lock(&q->mutex);
-
     if (!q->last_pkt)
-
         q->first_pkt = pkt1;
     else
         q->last_pkt->next = pkt1;
     q->last_pkt = pkt1;
     q->nb_packets++;
+    //q->size += pkt1->pkt.size + sizeof(*pkt1);
     q->size += pkt1->pkt.size;
-    pthread_cond_signal(&q->cond);
-
-    pthread_mutex_unlock(&q->mutex);
+    q->cond.signal();
     return 0;
+}
+
+int packet_queue_put(PacketQueue *q, AVPacket *pkt)
+{
+    int ret;
+
+    /* duplicate the packet */
+    if (pkt != &q->flush_pkt && av_dup_packet(pkt) < 0)
+        return -1;
+
+    q->lock.lock();
+    ret = packet_queue_put_private(q, pkt);
+    q->lock.unlock();
+
+    if (pkt != &q->flush_pkt && ret < 0)
+        av_packet_unref(pkt);
+
+    return ret;
+}
+
+int packet_queue_is_wait_for_data(PacketQueue *q)
+{
+    Mutex::Autolock autoLock(q->lock);
+    return q->wait_for_data;
 }
 
 int packet_queue_put_nullpacket(PacketQueue *q, int stream_index)
@@ -399,25 +444,23 @@ int packet_queue_put_nullpacket(PacketQueue *q, int stream_index)
     return packet_queue_put(q, pkt);
 }
 
+/* packet queue handling */
+/* return < 0 if aborted, 0 if no packet and > 0 if packet.  */
 int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block)
 {
     AVPacketList *pkt1;
-    int ret;
+    int ret = -1;
 
-    pthread_mutex_lock(&q->mutex);
+    Mutex::Autolock autoLock(q->lock);
 
-    for (;;) {
-        if (q->abort_request) {
-            ret = -1;
-            break;
-        }
-
+    while (!q->abort_request) {
         pkt1 = q->first_pkt;
         if (pkt1) {
             q->first_pkt = pkt1->next;
             if (!q->first_pkt)
                 q->last_pkt = NULL;
             q->nb_packets--;
+            //q->size -= pkt1->pkt.size + sizeof(*pkt1);
             q->size -= pkt1->pkt.size;
             *pkt = pkt1->pkt;
             av_free(pkt1);
@@ -427,17 +470,31 @@ int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block)
             ret = 0;
             break;
         } else {
-            pthread_cond_wait(&q->cond, &q->mutex);
+            q->wait_for_data = 1;
+            q->cond.waitRelative(q->lock, 10000000LL);
         }
     }
-    pthread_mutex_unlock(&q->mutex);
+    q->wait_for_data = 0;
     return ret;
 }
 
+void packet_queue_start(PacketQueue *q)
+{
+    Mutex::Autolock autoLock(q->lock);
+    av_init_packet(&q->flush_pkt);
+    q->flush_pkt.data = (uint8_t *)&q->flush_pkt;
+    q->flush_pkt.size = 0;
+    q->abort_request = 0;
+    packet_queue_put_private(q, &q->flush_pkt);
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+// misc
+//////////////////////////////////////////////////////////////////////////////////
 bool setup_vorbis_extradata(uint8_t **extradata, int *extradata_size,
         const uint8_t *header_start[3], const int header_len[3])
 {
-	uint8_t *p = NULL;
+    uint8_t *p = NULL;
     int len = 0;
     int i = 0;
 
@@ -446,7 +503,7 @@ bool setup_vorbis_extradata(uint8_t **extradata, int *extradata_size,
     if (!p) {
         ALOGE("oom for vorbis extradata");
         return false;
-	}
+    }
 
     *p++ = 2;
     p += av_xiphlacing(p, header_len[0]);
@@ -460,6 +517,25 @@ bool setup_vorbis_extradata(uint8_t **extradata, int *extradata_size,
     *extradata_size = p - *extradata;
 
     return true;
+}
+
+int64_t get_timestamp() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+
+audio_format_t to_android_audio_format(enum AVSampleFormat fmt) {
+    AVSampleFormat packed = av_get_packed_sample_fmt(fmt);
+    if (packed == AV_SAMPLE_FMT_U8)
+        return AUDIO_FORMAT_PCM_8_BIT;
+    if (packed == AV_SAMPLE_FMT_S16)
+        return AUDIO_FORMAT_PCM_16_BIT;
+    if (packed == AV_SAMPLE_FMT_S32)
+        return AUDIO_FORMAT_PCM_32_BIT;
+    if (packed == AV_SAMPLE_FMT_FLT)
+        return AUDIO_FORMAT_PCM_FLOAT;
+    return AUDIO_FORMAT_DEFAULT;
 }
 
 }  // namespace android

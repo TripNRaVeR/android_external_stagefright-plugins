@@ -15,27 +15,14 @@
  */
 
 #ifndef SUPER_EXTRACTOR_H_
+
 #define SUPER_EXTRACTOR_H_
 
 #include <media/stagefright/foundation/ABase.h>
 #include <media/stagefright/MediaExtractor.h>
-
-#include "libavutil/avstring.h"
-#include "libavutil/colorspace.h"
-#include "libavutil/mathematics.h"
-#include "libavutil/pixdesc.h"
-#include "libavutil/imgutils.h"
-#include "libavutil/dict.h"
-#include "libavutil/parseutils.h"
-#include "libavutil/samplefmt.h"
-#include "libavutil/avassert.h"
-#include "libavformat/avformat.h"
-#include "libavdevice/avdevice.h"
-#include "libswscale/swscale.h"
-#include "libswresample/swresample.h"
-
 #include <utils/threads.h>
 #include <utils/KeyedVector.h>
+#include <media/stagefright/MediaSource.h>
 
 #include "utils/ffmpeg_utils.h"
 
@@ -43,14 +30,14 @@ namespace android {
 
 struct ABuffer;
 struct AMessage;
-struct Track;
-struct String8;
+class String8;
+struct FFmpegSource;
 
 struct FFmpegExtractor : public MediaExtractor {
     FFmpegExtractor(const sp<DataSource> &source, const sp<AMessage> &meta);
 
     virtual size_t countTracks();
-    virtual sp<MediaSource> getTrack(size_t index);
+    virtual sp<IMediaSource> getTrack(size_t index);
     virtual sp<MetaData> getTrackMetaData(size_t index, uint32_t flags);
 
     virtual sp<MetaData> getMetaData();
@@ -61,14 +48,24 @@ protected:
     virtual ~FFmpegExtractor();
 
 private:
-    struct Track;
+    friend struct FFmpegSource;
+
+    struct TrackInfo {
+        int mIndex; //stream index
+        sp<MetaData> mMeta;
+        AVStream *mStream;
+        PacketQueue *mQueue;
+    };
+
+    Vector<TrackInfo> mTracks;
 
     mutable Mutex mLock;
+    mutable Mutex mExtractorMutex;
+    Condition mCondition;
+
     sp<DataSource> mDataSource;
     sp<MetaData> mMeta;
     status_t mInitCheck;
-
-    KeyedVector<unsigned, sp<Track> > mTracks;
 
     char mFilename[PATH_MAX];
     int mGenPTS;
@@ -86,9 +83,12 @@ private:
     int mAbortRequest;
     int mPaused;
     int mLastPaused;
-    int mSeekReq;
-    int mSeekFlags;
+    int mSeekIdx;
+    MediaSource::ReadOptions::SeekMode mSeekMode;
     int64_t mSeekPos;
+    int64_t mSeekMin;
+    int64_t mSeekMax;
+
     int mReadPauseReturn;
     PacketQueue mAudioQ;
     PacketQueue mVideoQ;
@@ -119,7 +119,8 @@ private:
     int stream_component_open(int stream_index);
     void stream_component_close(int stream_index);
     void reachedEOS(enum AVMediaType media_type);
-    int stream_seek(int64_t pos, enum AVMediaType media_type);
+    int stream_seek(int64_t pos, enum AVMediaType media_type,
+            MediaSource::ReadOptions::SeekMode mode);
     int check_extradata(AVCodecContext *avctx);
 
     bool mReaderThreadStarted;
@@ -129,14 +130,25 @@ private:
     static void *ReaderWrapper(void *me);
     void readerEntry();
 
+    bool mParsedMetadata;
+
     DISALLOW_EVIL_CONSTRUCTORS(FFmpegExtractor);
 };
+
+extern "C" {
+
+static const char *findMatchingContainer(const char *name);
 
 bool SniffFFMPEG(
         const sp<DataSource> &source, String8 *mimeType, float *confidence,
         sp<AMessage> *);
 
-} // namespace android
+MediaExtractor* CreateFFMPEGExtractor(const sp<DataSource> &source,
+        const char *mime, const sp<AMessage> &meta);
+
+}
+
+}  // namespace android
 
 #endif  // SUPER_EXTRACTOR_H_
 

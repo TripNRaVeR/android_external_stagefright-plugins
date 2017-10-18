@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Michael Chen <omxcodec@gmail.com>
+ * Copyright (C) 2017 TripNDroid Mobile Engineering
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 
 #ifndef SOFT_FFMPEGAUDIO_H_
+
 #define SOFT_FFMPEGAUDIO_H_
 
 #include "SimpleSoftOMXComponent.h"
@@ -23,55 +24,46 @@
 #error "__GNUC__ cflags should be enabled"
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#include <inttypes.h>
-#include <math.h>
-#include <limits.h> /* INT_MAX */
-
-#include "config.h"
-#include "libavutil/avstring.h"
-#include "libavutil/colorspace.h"
-#include "libavutil/mathematics.h"
-#include "libavutil/pixdesc.h"
-#include "libavutil/imgutils.h"
-#include "libavutil/parseutils.h"
-#include "libavutil/avassert.h"
-#include "libavutil/intreadwrite.h"
-#include "libavutil/opt.h"
-#include "libavutil/internal.h"
-#include "libavformat/avformat.h"
-#include "libavdevice/avdevice.h"
-#include "libswscale/swscale.h"
-#include "libavcodec/avfft.h"
-#include "libswresample/swresample.h"
-
-#ifdef __cplusplus
-}
-#endif
-
 #include "utils/ffmpeg_utils.h"
 
-const int AVCODEC_MAX_AUDIO_FRAME_SIZE = 192000;
+#include <OMX_AudioExt.h>
+#include <OMX_IndexExt.h>
+
+const int AVCODEC_MAX_AUDIO_FRAME_SIZE = 192000; // Deprecated in ffmpeg
 
 namespace android {
 
 struct SoftFFmpegAudio : public SimpleSoftOMXComponent {
+    SoftFFmpegAudio(const char *name,
+            const char* componentRole,
+            OMX_AUDIO_CODINGTYPE codingType,
+            enum AVCodecID codecID,
+            const OMX_CALLBACKTYPE *callbacks,
+            OMX_PTR appData,
+            OMX_COMPONENTTYPE **component);
 
-    SoftFFmpegAudio(const char *name, const OMX_CALLBACKTYPE *callbacks, OMX_PTR appData,
-                                                                         OMX_COMPONENTTYPE **component);
+public:
+    static int64_t *sAudioClock;
+    static int64_t getAudioClock(void);
+    static void setAudioClock(int64_t value);
+
+    static SoftOMXComponent* createSoftOMXComponent(
+            const char *name, const OMX_CALLBACKTYPE *callbacks,
+            OMX_PTR appData, OMX_COMPONENTTYPE **component);
 
 protected:
     virtual ~SoftFFmpegAudio();
 
-    virtual OMX_ERRORTYPE internalGetParameter(OMX_INDEXTYPE index, OMX_PTR params);
-    virtual OMX_ERRORTYPE internalSetParameter(OMX_INDEXTYPE index, const OMX_PTR params);
+    virtual OMX_ERRORTYPE internalGetParameter(
+            OMX_INDEXTYPE index, OMX_PTR params);
+
+    virtual OMX_ERRORTYPE internalSetParameter(
+            OMX_INDEXTYPE index, const OMX_PTR params);
 
     virtual void onQueueFilled(OMX_U32 portIndex);
     virtual void onPortFlushCompleted(OMX_U32 portIndex);
     virtual void onPortEnableCompleted(OMX_U32 portIndex, bool enabled);
+    virtual void onReset();
 
 private:
     enum {
@@ -79,24 +71,8 @@ private:
         kOutputPortIndex  = 1,
         kNumInputBuffers  = 4,
         kNumOutputBuffers = 4,
-        kOutputBufferSize = 4608 * 2
+        kOutputBufferSize = 9216 * 2
     };
-
-    enum {
-        MODE_NONE,
-        MODE_AAC,
-        MODE_MPEG,
-        MODE_VORBIS,
-        MODE_WMA,
-        MODE_RA,
-        MODE_FLAC,
-        MODE_MPEGL1,
-        MODE_MPEGL2,
-        MODE_AC3,
-        MODE_APE,
-        MODE_DTS,
-        MODE_HEURISTIC
-    } mMode;
 
     enum EOSStatus {
         INPUT_DATA_AVAILABLE,
@@ -107,8 +83,8 @@ private:
     enum {
         ERR_NO_FRM              = 2,
         ERR_FLUSHED             = 1,
-        ERR_OK                  = 0,
-        ERR_OOM                 = -1,
+        ERR_OK                  = 0,  //No errors
+        ERR_OOM                 = -1, //Out of memmory
         ERR_INVALID_PARAM       = -2,
         ERR_CODEC_NOT_FOUND     = -3,
         ERR_DECODER_OPEN_FAILED = -4,
@@ -116,6 +92,8 @@ private:
         ERR_RESAMPLE_FAILED     = -6
     };
 
+    const char* mRole;
+    OMX_AUDIO_CODINGTYPE mCodingType;
     bool mFFmpegAlreadyInited;
     bool mCodecAlreadyOpened;
     bool mExtradataReady;
@@ -131,19 +109,22 @@ private:
 
     bool mSignalledError;
 
-    int64_t mAudioClock;
     int32_t mInputBufferSize;
 
+    //"Fatal signal 7 (SIGBUS)"!!! SIGBUS is because of an alignment exception
+    //LOCAL_CFLAGS += -D__GNUC__=1 in *.cpp file
+    //Don't malloc mAudioBuffer", because "NEON optimised stereo fltp to s16
+    //conversion" require byte alignment.
     DECLARE_ALIGNED(16, uint8_t, mAudioBuffer)[AVCODEC_MAX_AUDIO_FRAME_SIZE * 4];
 
     uint8_t mSilenceBuffer[kOutputBufferSize];
     uint8_t *mResampledData;
     int32_t mResampledDataSize;
 
-    int mAudioSrcFreq;
-    int mAudioTgtFreq;
-    int mAudioSrcChannels;
-    int mAudioTgtChannels;
+    uint32_t mAudioSrcFreq;
+    uint32_t mAudioTgtFreq;
+    uint32_t mAudioSrcChannels;
+    uint32_t mAudioTgtChannels;
     int64_t mAudioSrcChannelLayout;
     int64_t mAudioTgtChannelLayout;
     enum AVSampleFormat mAudioSrcFmt;
@@ -155,15 +136,18 @@ private:
         AWAITING_ENABLED
     } mOutputPortSettingsChange;
 
+    bool mReconfiguring;
+
     void setMode(const char *name);
     void initInputFormat(uint32_t mode, OMX_PARAM_PORTDEFINITIONTYPE &def);
     void setDefaultCtx(AVCodecContext *avctx, const AVCodec *codec);
     void resetCtx();
     OMX_ERRORTYPE isRoleSupported(const OMX_PARAM_COMPONENTROLETYPE *roleParams);
     void adjustAudioParams();
+    bool isConfigured();
 
     void initPorts();
-    status_t initDecoder();
+    status_t initDecoder(enum AVCodecID codecID);
     void deInitDecoder();
 
     void    initVorbisHdr();
@@ -182,6 +166,8 @@ private:
     DISALLOW_EVIL_CONSTRUCTORS(SoftFFmpegAudio);
 };
 
-} // namespace android
+}  // namespace android
 
 #endif  // SOFT_FFMPEGAUDIO_H_
+
+

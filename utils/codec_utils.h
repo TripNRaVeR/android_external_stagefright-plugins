@@ -15,6 +15,7 @@
  */
 
 #ifndef CODEC_UTILS_H_
+
 #define CODEC_UTILS_H_
 
 #include <unistd.h>
@@ -41,6 +42,9 @@ sp<MetaData> setRV20Format(AVCodecContext *avctx);
 sp<MetaData> setRV30Format(AVCodecContext *avctx);
 sp<MetaData> setRV40Format(AVCodecContext *avctx);
 sp<MetaData> setFLV1Format(AVCodecContext *avctx);
+sp<MetaData> setHEVCFormat(AVCodecContext *avctx);
+sp<MetaData> setVP8Format(AVCodecContext *avctx);
+sp<MetaData> setVP9Format(AVCodecContext *avctx);
 //audio
 sp<MetaData> setMP2Format(AVCodecContext *avctx);
 sp<MetaData> setMP3Format(AVCodecContext *avctx);
@@ -55,9 +59,18 @@ sp<MetaData> setRAFormat(AVCodecContext *avctx);
 sp<MetaData> setAPEFormat(AVCodecContext *avctx);
 sp<MetaData> setDTSFormat(AVCodecContext *avctx);
 sp<MetaData> setFLACFormat(AVCodecContext *avctx);
+sp<MetaData> setALACFormat(AVCodecContext *avctx);
 
+//Convert H.264 NAL format to annex b
 status_t convertNal2AnnexB(uint8_t *dst, size_t dst_size,
         uint8_t *src, size_t src_size, size_t nal_len_size);
+
+int getDivXVersion(AVCodecContext *avctx);
+
+status_t parseMetadataTags(AVFormatContext *ctx, const sp<MetaData> &meta);
+
+AudioEncoding sampleFormatToEncoding(AVSampleFormat fmt);
+AVSampleFormat encodingToSampleFormat(AudioEncoding encoding);
 
 }  // namespace android
 
